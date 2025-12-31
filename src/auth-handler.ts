@@ -197,6 +197,12 @@ async function handleLoginSubmit(
     const codeChallenge = await generateCodeChallenge(codeVerifier);
 
     // Extract serializable data from OAuth request to avoid URL object serialization issues
+    console.log("Received OAuth request - responseType:", oauthReq.responseType);
+    console.log("Received OAuth request - clientId:", oauthReq.clientId);
+    console.log("Received OAuth request - redirectUri:", oauthReq.redirectUri);
+    console.log("Received OAuth request - state:", oauthReq.state);
+    console.log("Received OAuth request - scope:", oauthReq.scope);
+
     const storedOAuthReq: StoredOAuthRequest = {
       responseType: oauthReq.responseType,
       clientId: oauthReq.clientId,
@@ -206,6 +212,8 @@ async function handleLoginSubmit(
       codeChallenge: oauthReq.codeChallenge,
       codeChallengeMethod: oauthReq.codeChallengeMethod,
     };
+
+    console.log("Stored OAuth request:", JSON.stringify(storedOAuthReq));
 
     // Store pending auth state in KV (includes original OAuth request info)
     const pendingAuth: PendingAuth & { storedOAuthReq: StoredOAuthRequest } = {
@@ -323,6 +331,28 @@ async function handleIndieAuthCallback(
 
     // Complete the OAuth authorization using the provider helpers
     // Pass the stored OAuth request data (serializable primitives only)
+    console.log("Completing authorization with storedOAuthReq:", JSON.stringify(pending.storedOAuthReq));
+    console.log("storedOAuthReq.redirectUri:", pending.storedOAuthReq.redirectUri);
+    console.log("storedOAuthReq.clientId:", pending.storedOAuthReq.clientId);
+    console.log("storedOAuthReq.state:", pending.storedOAuthReq.state);
+
+    // Validate that required URL fields are present and valid
+    if (!pending.storedOAuthReq.redirectUri || !pending.storedOAuthReq.clientId) {
+      console.error("Missing required OAuth fields in stored request");
+      return renderErrorPage("Authorization session is invalid. Missing required OAuth parameters. Please try again.");
+    }
+
+    // Validate URLs before passing to completeAuthorization
+    try {
+      new URL(pending.storedOAuthReq.redirectUri);
+      new URL(pending.storedOAuthReq.clientId);
+    } catch (urlError) {
+      console.error("Invalid URL in stored OAuth request:", urlError);
+      console.error("redirectUri:", pending.storedOAuthReq.redirectUri);
+      console.error("clientId:", pending.storedOAuthReq.clientId);
+      return renderErrorPage(`Invalid OAuth configuration. redirectUri or clientId is not a valid URL. Please try again.`);
+    }
+
     const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
       request: pending.storedOAuthReq as unknown as AuthRequest,
       userId: token.me,
