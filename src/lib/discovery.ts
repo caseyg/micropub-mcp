@@ -42,7 +42,12 @@ export async function discoverEndpoints(websiteUrl: string): Promise<DiscoveryRe
 
   // Check Link headers first (highest priority per spec)
   const linkHeader = response.headers.get("Link");
+  let metadataUrl: string | undefined;
+
   if (linkHeader) {
+    // Per IndieAuth spec, check for indieauth-metadata first (primary method)
+    metadataUrl = extractLinkRel(linkHeader, "indieauth-metadata");
+    // Also extract legacy endpoints from Link header (backwards compatibility)
     result.micropubEndpoint = extractLinkRel(linkHeader, "micropub");
     result.authorizationEndpoint = extractLinkRel(linkHeader, "authorization_endpoint");
     result.tokenEndpoint = extractLinkRel(linkHeader, "token_endpoint");
@@ -51,6 +56,12 @@ export async function discoverEndpoints(websiteUrl: string): Promise<DiscoveryRe
   // Parse HTML for link elements
   const html = await response.text();
 
+  // Check HTML for indieauth-metadata if not found in Link header
+  if (!metadataUrl) {
+    metadataUrl = extractHtmlLinkRel(html, "indieauth-metadata");
+  }
+
+  // Fallback to legacy HTML link elements for backwards compatibility
   if (!result.micropubEndpoint) {
     result.micropubEndpoint = extractHtmlLinkRel(html, "micropub");
   }
@@ -61,8 +72,8 @@ export async function discoverEndpoints(websiteUrl: string): Promise<DiscoveryRe
     result.tokenEndpoint = extractHtmlLinkRel(html, "token_endpoint");
   }
 
-  // Check for IndieAuth metadata endpoint (RFC 8414 style)
-  const metadataUrl = extractHtmlLinkRel(html, "indieauth-metadata");
+  // Fetch IndieAuth metadata endpoint (primary discovery method per spec)
+  // This overrides any legacy endpoints found above
   if (metadataUrl) {
     try {
       const metadata = await fetchIndieAuthMetadata(resolveUrl(metadataUrl, canonicalUrl)!);
