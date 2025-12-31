@@ -130,7 +130,7 @@ function renderLoginPage(oauthReq: AuthRequest): Response {
   <h1>Sign in with your website</h1>
   <p class="subtitle">Connect your IndieWeb site to enable AI-powered publishing</p>
 
-  <form method="POST" action="/authorize">
+  <form method="POST" action="/authorize?${buildOAuthQueryString(oauthReq)}">
     <label for="me">Your website URL</label>
     <input
       type="url"
@@ -405,4 +405,26 @@ function escapeHtml(str: string): string {
     "'": "&#39;",
   };
   return str.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
+}
+
+/**
+ * Build query string from OAuth request parameters
+ * Used to preserve OAuth params through the login form POST
+ */
+function buildOAuthQueryString(oauthReq: AuthRequest): string {
+  const params = new URLSearchParams();
+  params.set("response_type", oauthReq.responseType);
+  params.set("client_id", oauthReq.clientId);
+  params.set("redirect_uri", oauthReq.redirectUri);
+  params.set("state", oauthReq.state);
+  if (oauthReq.scope && oauthReq.scope.length > 0) {
+    params.set("scope", oauthReq.scope.join(" "));
+  }
+  if (oauthReq.codeChallenge) {
+    params.set("code_challenge", oauthReq.codeChallenge);
+  }
+  if (oauthReq.codeChallengeMethod) {
+    params.set("code_challenge_method", oauthReq.codeChallengeMethod);
+  }
+  return params.toString();
 }
