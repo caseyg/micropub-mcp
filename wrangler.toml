@@ -13,10 +13,10 @@ tag = "v1"
 new_classes = ["MicropubMcpAgent"]
 
 # KV namespace for OAuth token storage
-# Create with: wrangler kv namespace create OAUTH_KV
+# Create with: wrangler kv namespace create MICROPUB_OAUTH_KV
 [[kv_namespaces]]
-binding = "OAUTH_KV"
-id = "your-kv-namespace-id"
+binding = "MICROPUB_OAUTH_KV"
+id = "0d4d1ab4f81845b7a2d32a059647e65c"
 
 # For local development, use preview_id or wrangler will create one
 # preview_id = "your-preview-kv-namespace-id"
