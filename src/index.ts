@@ -84,23 +84,86 @@ const defaultHandler = {
 
 /**
  * Handle the discovery endpoint
+ *
+ * Returns HTML with h-app microformat for IndieAuth client identification,
+ * or JSON for API consumers based on Accept header.
  */
 function handleDiscovery(request: Request): Response {
   const url = new URL(request.url);
   const baseUrl = `${url.protocol}//${url.host}`;
+  const accept = request.headers.get("Accept") || "";
 
-  const info = {
-    ...serverInfo,
-    endpoints: {
-      mcp: `${baseUrl}/mcp`,
-      sse: `${baseUrl}/sse`,
-      authorize: `${baseUrl}/authorize`,
-    },
-  };
+  // Check if client prefers JSON (API consumers, not IndieAuth servers)
+  const prefersJson = accept.includes("application/json") && !accept.includes("text/html");
 
-  return new Response(JSON.stringify(info, null, 2), {
+  if (prefersJson) {
+    const info = {
+      ...serverInfo,
+      endpoints: {
+        mcp: `${baseUrl}/mcp`,
+        sse: `${baseUrl}/sse`,
+        authorize: `${baseUrl}/authorize`,
+      },
+    };
+
+    return new Response(JSON.stringify(info, null, 2), {
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // Return HTML with h-app microformat for IndieAuth client identification
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${serverInfo.name}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #333; }
+    .h-app { border: 1px solid #ddd; padding: 1.5rem; border-radius: 8px; }
+    .endpoints { margin-top: 1rem; }
+    .endpoints dt { font-weight: bold; }
+    .endpoints dd { margin-left: 0; margin-bottom: 0.5rem; }
+    code { background: #f4f4f4; padding: 0.2rem 0.4rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="h-app">
+    <h1 class="p-name">${serverInfo.name}</h1>
+    <p class="p-summary">${serverInfo.description}</p>
+    <a href="${baseUrl}" class="u-url" rel="canonical">${baseUrl}</a>
+
+    <div class="endpoints">
+      <h2>Endpoints</h2>
+      <dl>
+        <dt>MCP</dt>
+        <dd><code>${baseUrl}/mcp</code></dd>
+        <dt>SSE</dt>
+        <dd><code>${baseUrl}/sse</code></dd>
+        <dt>Authorize</dt>
+        <dd><code>${baseUrl}/authorize</code></dd>
+      </dl>
+    </div>
+
+    <div class="protocols">
+      <h2>Protocols</h2>
+      <ul>
+        <li><a href="${serverInfo.protocols.micropub}">Micropub</a></li>
+        <li><a href="${serverInfo.protocols.indieauth}">IndieAuth</a></li>
+        <li><a href="${serverInfo.protocols.mcp}">Model Context Protocol</a></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return new Response(html, {
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "text/html; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
     },
   });
