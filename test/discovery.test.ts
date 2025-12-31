@@ -87,6 +87,17 @@ describe("discovery utilities", () => {
       const html = '<link rel="micropub" href="/micropub">';
       expect(extractHtmlLinkRel(html, "micropub")).toBe("/micropub");
     });
+
+    it("should handle multiple rel values (space-separated)", () => {
+      const html = '<link rel="micropub webmention" href="https://example.com/micropub">';
+      expect(extractHtmlLinkRel(html, "micropub")).toBe("https://example.com/micropub");
+      expect(extractHtmlLinkRel(html, "webmention")).toBe("https://example.com/micropub");
+    });
+
+    it("should be case-insensitive for rel values", () => {
+      const html = '<link rel="MICROPUB" href="https://example.com/micropub">';
+      expect(extractHtmlLinkRel(html, "micropub")).toBe("https://example.com/micropub");
+    });
   });
 
   describe("resolveUrl", () => {

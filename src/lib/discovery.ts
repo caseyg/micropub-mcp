@@ -152,18 +152,31 @@ export function extractLinkRel(header: string, rel: string): string | undefined 
  * Extract a URL from an HTML <link> element by rel value
  *
  * @param html - The HTML content
- * @param rel - The rel value to look for
+ * @param rel - The rel value to look for (can be one of multiple space-separated values)
  * @returns The href value if found, undefined otherwise
  */
 export function extractHtmlLinkRel(html: string, rel: string): string | undefined {
-  // Match <link> elements with the specified rel
-  // Handle both rel="..." href="..." and href="..." rel="..." orders
-  const regex = new RegExp(
-    `<link[^>]+(?:rel=["']${escapeRegex(rel)}["'][^>]+href=["']([^"']+)["']|href=["']([^"']+)["'][^>]+rel=["']${escapeRegex(rel)}["'])`,
-    "i"
-  );
-  const match = html.match(regex);
-  return match?.[1] || match?.[2];
+  // Match all <link> elements
+  const linkRegex = /<link\s+[^>]*>/gi;
+  const links = html.match(linkRegex) || [];
+
+  for (const link of links) {
+    // Extract rel attribute value (handles both single and double quotes)
+    const relMatch = link.match(/\brel=["']([^"']+)["']/i);
+    if (!relMatch) continue;
+
+    // Check if our target rel is among the space-separated values
+    const relValues = relMatch[1].toLowerCase().split(/\s+/);
+    if (!relValues.includes(rel.toLowerCase())) continue;
+
+    // Extract href attribute value
+    const hrefMatch = link.match(/\bhref=["']([^"']+)["']/i);
+    if (hrefMatch) {
+      return hrefMatch[1];
+    }
+  }
+
+  return undefined;
 }
 
 /**
