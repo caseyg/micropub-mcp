@@ -1,0 +1,22 @@
+name = "micropub-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-03-03"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects for stateful sessions
+[[durable_objects.bindings]]
+name = "MICROPUB_MCP"
+class_name = "MicropubMcpAgent"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["MicropubMcpAgent"]
+
+# KV namespace for OAuth token storage
+# Create with: wrangler kv namespace create OAUTH_KV
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "your-kv-namespace-id"
+
+# For local development, use preview_id or wrangler will create one
+# preview_id = "your-preview-kv-namespace-id"
