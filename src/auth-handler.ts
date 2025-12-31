@@ -20,6 +20,7 @@ import type { Env, PendingAuth, AuthProps, MicropubConfig } from "./types.js";
  * We store primitives instead of the full AuthRequest to avoid URL serialization issues
  */
 interface StoredOAuthRequest {
+  responseType: string;
   clientId: string;
   redirectUri: string;
   state: string;
@@ -197,6 +198,7 @@ async function handleLoginSubmit(
 
     // Extract serializable data from OAuth request to avoid URL object serialization issues
     const storedOAuthReq: StoredOAuthRequest = {
+      responseType: oauthReq.responseType,
       clientId: oauthReq.clientId,
       redirectUri: oauthReq.redirectUri,
       state: oauthReq.state,
