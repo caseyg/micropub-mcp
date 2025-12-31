@@ -15,6 +15,19 @@ import { buildAuthorizationUrl, exchangeCodeForToken } from "./lib/indieauth.js"
 import { generateCodeVerifier, generateCodeChallenge, generateState } from "./lib/pkce.js";
 import type { Env, PendingAuth, AuthProps, MicropubConfig } from "./types.js";
 
+/**
+ * Serializable OAuth request data for storage in KV
+ * We store primitives instead of the full AuthRequest to avoid URL serialization issues
+ */
+interface StoredOAuthRequest {
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  scope: string[];
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
+}
+
 // Pending auth entries expire after 10 minutes
 const PENDING_AUTH_TTL = 600;
 
@@ -182,8 +195,18 @@ async function handleLoginSubmit(
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = await generateCodeChallenge(codeVerifier);
 
+    // Extract serializable data from OAuth request to avoid URL object serialization issues
+    const storedOAuthReq: StoredOAuthRequest = {
+      clientId: oauthReq.clientId,
+      redirectUri: oauthReq.redirectUri,
+      state: oauthReq.state,
+      scope: oauthReq.scope || [],
+      codeChallenge: oauthReq.codeChallenge,
+      codeChallengeMethod: oauthReq.codeChallengeMethod,
+    };
+
     // Store pending auth state in KV (includes original OAuth request info)
-    const pendingAuth: PendingAuth & { oauthReq: AuthRequest } = {
+    const pendingAuth: PendingAuth & { storedOAuthReq: StoredOAuthRequest } = {
       me: endpoints.me,
       micropubEndpoint: endpoints.micropubEndpoint,
       mediaEndpoint: endpoints.mediaEndpoint,
@@ -193,7 +216,7 @@ async function handleLoginSubmit(
       clientRedirectUri: oauthReq.redirectUri,
       requestedScope: oauthReq.scope?.join(" ") || "create update delete media",
       createdAt: Date.now(),
-      oauthReq, // Store the original OAuth request for completing authorization
+      storedOAuthReq, // Store serializable OAuth request data for completing authorization
     };
 
     await env.OAUTH_KV.put(`pending:${state}`, JSON.stringify(pendingAuth), {
@@ -251,7 +274,7 @@ async function handleIndieAuthCallback(
   // Delete the pending auth entry
   await env.OAUTH_KV.delete(`pending:${state}`);
 
-  const pending: PendingAuth & { oauthReq: AuthRequest } = JSON.parse(pendingJson);
+  const pending: PendingAuth & { storedOAuthReq: StoredOAuthRequest } = JSON.parse(pendingJson);
 
   try {
     // Exchange code for token
@@ -297,8 +320,9 @@ async function handleIndieAuthCallback(
     };
 
     // Complete the OAuth authorization using the provider helpers
+    // Pass the stored OAuth request data (serializable primitives only)
     const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
-      request: pending.oauthReq,
+      request: pending.storedOAuthReq as unknown as AuthRequest,
       userId: token.me,
       metadata: {
         me: token.me,
