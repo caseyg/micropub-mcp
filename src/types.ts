@@ -1,50 +1,69 @@
 /**
+ * Type definitions for Micropub MCP Server
+ */
+
+import type { KVNamespace } from "@cloudflare/workers-types";
+import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
+
+/**
  * Cloudflare Worker environment bindings
  */
 export interface Env {
   /** Durable Object namespace for MCP agent sessions */
   MICROPUB_MCP: DurableObjectNamespace;
-  /** Optional: OAuth client ID for this server (can be overridden at runtime) */
-  CLIENT_ID?: string;
-  /** Optional: OAuth redirect URI (can be overridden at runtime) */
-  REDIRECT_URI?: string;
+  /** KV namespace for OAuth token storage */
+  OAUTH_KV: KVNamespace;
+  /** OAuth provider helpers injected by OAuthProvider wrapper */
+  OAUTH_PROVIDER: OAuthHelpers;
 }
 
 /**
- * Session state stored in the Durable Object
+ * Auth context props stored with OAuth grants (encrypted)
+ * These are passed to every authenticated MCP request but never exposed to clients
  */
-export interface SessionState {
-  // User identity
-  /** User's website URL (canonical form) */
-  me?: string;
-
-  // Discovered endpoints
-  /** Micropub endpoint URL */
-  micropubEndpoint?: string;
-  /** Media endpoint URL (if available) */
+export interface AuthProps extends Record<string, unknown> {
+  /** User's website URL (me parameter) */
+  me: string;
+  /** Discovered Micropub endpoint */
+  micropubEndpoint: string;
+  /** Media endpoint (if available) */
   mediaEndpoint?: string;
-  /** IndieAuth authorization endpoint */
-  authorizationEndpoint?: string;
-  /** IndieAuth token endpoint */
-  tokenEndpoint?: string;
-
-  // OAuth tokens
-  /** OAuth access token */
-  accessToken?: string;
-  /** Token type (usually "Bearer") */
-  tokenType?: string;
-  /** Granted OAuth scopes */
-  scope?: string;
-  /** Refresh token (if provided) */
+  /** IndieAuth access token (encrypted, never sent to MCP client) */
+  indieAuthToken: string;
+  /** Token type */
+  tokenType: string;
+  /** Granted scopes */
+  scope: string;
+  /** Refresh token (if available) */
   refreshToken?: string;
-  /** Token expiration timestamp (milliseconds since epoch) */
+  /** Token expiration timestamp */
   tokenExpiresAt?: number;
+  /** Token endpoint for refresh */
+  tokenEndpoint?: string;
+}
 
-  // Auth flow state (temporary, cleared after completion)
-  /** CSRF state parameter */
-  authState?: string;
+/**
+ * Pending authorization state stored in KV during OAuth flow
+ */
+export interface PendingAuth {
+  /** User's website URL */
+  me: string;
+  /** Discovered Micropub endpoint */
+  micropubEndpoint: string;
+  /** Media endpoint */
+  mediaEndpoint?: string;
+  /** Authorization endpoint */
+  authorizationEndpoint: string;
+  /** Token endpoint */
+  tokenEndpoint: string;
   /** PKCE code verifier */
-  codeVerifier?: string;
+  codeVerifier: string;
+  /** Original MCP client redirect URI */
+  clientRedirectUri: string;
+  /** Requested scopes */
+  requestedScope: string;
+  /** Timestamp when this was created */
+  createdAt: number;
 }
 
 /**
@@ -154,3 +173,38 @@ export interface PhotoWithAlt {
   value: string;
   alt: string;
 }
+
+/**
+ * Consolidated post types supported by micropub_post tool
+ */
+export type MicropubPostType =
+  | "note"
+  | "article"
+  | "bookmark"
+  | "like"
+  | "repost"
+  | "reply"
+  | "rsvp"
+  | "photo"
+  | "video"
+  | "checkin";
+
+/**
+ * Query types supported by micropub_query tool
+ */
+export type MicropubQueryType =
+  | "config"
+  | "source"
+  | "syndicate-to"
+  | "category"
+  | "contact";
+
+/**
+ * Response format for tool outputs
+ */
+export type ResponseFormat = "concise" | "detailed";
+
+/**
+ * RSVP values
+ */
+export type RsvpValue = "yes" | "no" | "maybe" | "interested";

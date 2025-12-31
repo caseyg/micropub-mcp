@@ -13,7 +13,7 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@cloudflare/workers-oauth-provider": "^0.0.5",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "agents": "^0.0.74",
     "zod": "^3.24.0"

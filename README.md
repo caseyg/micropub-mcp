@@ -4,12 +4,20 @@ A remote MCP (Model Context Protocol) server running on Cloudflare Workers that 
 
 ## Features
 
-- **IndieAuth Authentication**: Secure OAuth 2.0 authentication with PKCE support
+- **OAuth 2.1 Provider**: Acts as OAuth provider to MCP clients with automatic IndieAuth delegation
 - **Full Micropub Support**: Create, update, delete posts, and upload media
-- **Multiple Post Types**: Notes, articles, bookmarks, likes, reposts, replies, RSVPs
+- **Multiple Post Types**: Notes, articles, bookmarks, likes, reposts, replies, RSVPs, photos, videos, checkins
 - **Query Capabilities**: Get post source, list categories, query syndication targets
 - **Cloudflare Workers**: Serverless deployment with Durable Objects for session state
 - **MCP Compatible**: Works with Claude Desktop, Cursor, and any MCP-compatible AI client
+
+## Architecture
+
+This server implements a dual OAuth role:
+- **OAuth Provider** to MCP clients (using `@cloudflare/workers-oauth-provider`)
+- **OAuth Client** to IndieAuth servers (delegating authentication to your website)
+
+When an MCP client connects, it triggers the OAuth flow which redirects users to enter their website URL. The server then discovers and delegates to their IndieAuth provider, storing the resulting token securely encrypted.
 
 ## Quick Start
 
@@ -29,6 +37,10 @@ cd micropub-mcp
 # Install dependencies
 npm install
 
+# Create KV namespace for OAuth storage
+wrangler kv namespace create OAUTH_KV
+# Copy the ID into wrangler.toml
+
 # Run locally
 npm run dev
 ```
@@ -36,27 +48,13 @@ npm run dev
 ### Deployment
 
 ```bash
+# Create production KV namespace
+wrangler kv namespace create OAUTH_KV
+
+# Update wrangler.toml with the namespace ID
+
 # Deploy to Cloudflare Workers
 npm run deploy
-```
-
-After deployment, update the `CLIENT_ID` and `REDIRECT_URI` environment variables to match your deployed URL:
-
-```bash
-# Set via wrangler secrets (recommended for production)
-wrangler secret put CLIENT_ID
-# Enter: https://your-worker.workers.dev/
-
-wrangler secret put REDIRECT_URI
-# Enter: https://your-worker.workers.dev/callback
-```
-
-Or configure in `wrangler.toml`:
-
-```toml
-[vars]
-CLIENT_ID = "https://micropub-mcp.your-subdomain.workers.dev/"
-REDIRECT_URI = "https://micropub-mcp.your-subdomain.workers.dev/callback"
 ```
 
 ## Usage
@@ -81,22 +79,10 @@ Add to your `claude_desktop_config.json`:
 
 ### Authentication Flow
 
-1. **Discover endpoints**: Ask the AI to discover your site's Micropub endpoints:
-   ```
-   "Discover Micropub endpoints for example.com"
-   ```
-
-2. **Start authentication**: The AI will provide an authorization URL:
-   ```
-   "Authenticate with example.com"
-   ```
-
-3. **Complete in browser**: Visit the URL, authorize access, and copy the code/state
-
-4. **Finish authentication**: Provide the code and state to complete:
-   ```
-   "Complete authentication with code: XXX and state: YYY"
-   ```
+1. **Connect**: When you first use a Micropub tool, you'll be prompted to authenticate
+2. **Enter your website**: A browser window opens where you enter your website URL
+3. **Authorize**: You're redirected to your site's IndieAuth provider to authorize
+4. **Done**: The connection is established and you can start publishing
 
 ### Creating Posts
 
@@ -110,56 +96,50 @@ Once authenticated, you can create various post types:
 "Bookmark this interesting article: https://example.com/article"
 
 "Reply to https://example.com/post saying..."
+
+"Like this post: https://example.com/great-article"
 ```
 
 ## Available Tools
 
-### Authentication
+The server provides four consolidated tools following Anthropic's guidance on tool design:
 
-| Tool | Description |
-|------|-------------|
-| `micropub_discover` | Discover Micropub/IndieAuth endpoints for a website |
-| `micropub_auth_start` | Start OAuth flow, returns authorization URL |
-| `micropub_auth_complete` | Exchange authorization code for access token |
-| `micropub_auth_status` | Check current authentication status |
-| `micropub_logout` | Clear session and disconnect |
+### micropub_post
 
-### Post Creation
+Create any type of post with a single tool. Supports:
+- **note**: Short status update
+- **article**: Long-form content with title
+- **bookmark**: Save a URL
+- **like**: Favorite/like another post
+- **repost**: Share/repost content
+- **reply**: Reply to another post
+- **rsvp**: RSVP to an event (yes/no/maybe/interested)
+- **photo**: Photo post with caption
+- **video**: Video post
+- **checkin**: Location checkin
 
-| Tool | Description |
-|------|-------------|
-| `micropub_create_note` | Create a short note (like a tweet) |
-| `micropub_create_article` | Create a long-form article with title |
-| `micropub_create_bookmark` | Save a URL as a bookmark |
-| `micropub_create_like` | Create a like/favorite |
-| `micropub_create_repost` | Repost/share another post |
-| `micropub_create_rsvp` | RSVP to an event |
-| `micropub_create_photo` | Create a photo post |
-| `micropub_create_video` | Create a video post |
+### micropub_query
 
-### Post Management
+Query your Micropub endpoint for:
+- **config**: Endpoint configuration and capabilities
+- **source**: Get source/properties of a specific post
+- **syndicate-to**: Available cross-posting targets
+- **category**: Available categories/tags
+- **contact**: Stored contacts (for person-tags)
 
-| Tool | Description |
-|------|-------------|
-| `micropub_update_post` | Update an existing post |
-| `micropub_delete_post` | Delete a post |
-| `micropub_undelete_post` | Restore a deleted post |
+### micropub_media
 
-### Queries
+Upload media files to your media endpoint:
+- Supports images, videos, audio
+- Optional alt text for accessibility
+- Returns URL for use in posts
 
-| Tool | Description |
-|------|-------------|
-| `micropub_query_config` | Get endpoint configuration |
-| `micropub_get_source` | Get source/properties of a post |
-| `micropub_list_posts` | List recent posts |
-| `micropub_get_categories` | Get available categories/tags |
-| `micropub_get_syndication_targets` | Get cross-posting targets |
+### micropub_manage
 
-### Media
-
-| Tool | Description |
-|------|-------------|
-| `micropub_upload_media` | Upload a file to the media endpoint |
+Manage existing posts:
+- **update**: Modify post properties (replace, add, or delete)
+- **delete**: Remove a post
+- **undelete**: Restore a deleted post
 
 ## Development
 
@@ -187,8 +167,10 @@ npm run typecheck
 ```
 micropub-mcp/
 ├── src/
-│   ├── index.ts           # Worker entry point
+│   ├── index.ts           # Worker entry point with OAuthProvider
 │   ├── agent.ts           # MCP Agent class (Durable Object)
+│   ├── auth-handler.ts    # IndieAuth delegation handler
+│   ├── mcp-handler.ts     # MCP server info
 │   ├── types.ts           # TypeScript interfaces
 │   ├── lib/
 │   │   ├── pkce.ts        # PKCE utilities
@@ -196,11 +178,11 @@ micropub-mcp/
 │   │   ├── indieauth.ts   # IndieAuth flow
 │   │   └── micropub-client.ts  # Micropub API client
 │   └── tools/
-│       ├── index.ts       # Tool registration hub
-│       ├── auth.ts        # Authentication tools
-│       ├── posts.ts       # Post creation tools
-│       ├── query.ts       # Query tools
-│       └── media.ts       # Media upload tools
+│       ├── index.ts           # Tool registration hub
+│       ├── micropub-post.ts   # Consolidated post creation
+│       ├── micropub-query.ts  # Consolidated queries
+│       ├── micropub-media.ts  # Media upload
+│       └── micropub-manage.ts # Post management
 ├── test/                  # Test files
 ├── wrangler.toml          # Cloudflare configuration
 ├── package.json
@@ -213,15 +195,20 @@ micropub-mcp/
 |----------|-------------|
 | `/` | Server info and discovery |
 | `/mcp` | MCP Streamable HTTP transport |
-| `/sse` | Legacy SSE transport |
-| `/callback` | OAuth callback for IndieAuth |
+| `/sse` | SSE transport |
+| `/authorize` | OAuth authorization (shows login page) |
+| `/token` | OAuth token endpoint |
+| `/register` | Dynamic client registration |
+| `/indieauth-callback` | IndieAuth callback |
+| `/.well-known/oauth-authorization-server` | OAuth metadata |
 
 ## Security
 
-- **PKCE Required**: All OAuth flows use PKCE (S256) for security
+- **OAuth 2.1 with PKCE**: All OAuth flows use PKCE (S256) for security
 - **State Validation**: CSRF protection via state parameter verification
-- **Token Storage**: Tokens stored in Durable Object storage (encrypted at rest)
+- **Encrypted Props**: Auth tokens stored encrypted by workers-oauth-provider
 - **Scope Control**: Request only the scopes needed for your use case
+- **Token Refresh**: Automatic token refresh when supported
 
 ## IndieWeb Compatibility
 
@@ -246,3 +233,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [IndieAuth Specification](https://indieauth.spec.indieweb.org/)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Cloudflare Workers](https://workers.cloudflare.com/)
+- [workers-oauth-provider](https://github.com/cloudflare/workers-oauth-provider)
